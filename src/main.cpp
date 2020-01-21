@@ -4,16 +4,12 @@
 #include <WiFi.h>
 #include "esp_sleep.h"
 #include "IMUSensor/IMUSensor.h"
+#include "Message/Message.h"
+#include "Message/MessageBuilder.h"
+#include "Message/MessageBuilderManager.h"
 #include "config.h"
 // For storing data on non-volatile memory
 #include <Preferences.h>
-
-enum VariableType
-{
-    ACCELERATION = 0,
-    ROTATION_RATE,
-    INCLINATION = 4
-};
 
 struct Sensor
 {
@@ -31,6 +27,7 @@ int8_t angle_roll_acc;
 
 double acc_total_vector;
 
+MessageBuilderManager msg_manager;
 Preferences storage_manager;
 
 // These callbacks are only used in over - the - air activation, so they are
@@ -115,18 +112,13 @@ void do_send(osjob_t *j)
 
     delay(4);
 
-    // Two extra bytes for: Sensor Id (different from device Id) and Variable type.
-    // Epoch_size times three because each entry on buffer is for three axes: x, y, z.
-    uint8_t buffer[4];
+    Message msg = msg_manager.createInclinationMessage(inclination_sensor.id_sensor, inclination_sensor.variableType, angle_pitch_acc, angle_roll_acc);
+    uint8_t *buffer = msg.getMessageArray();
+    int buffer_size = msg.getMessageArraySize();
 
-    buffer[0] = inclination_sensor.id_sensor;
-    buffer[1] = inclination_sensor.variableType;
-    // Angle on X axis.
-    buffer[2] = angle_pitch_acc;
-    // Anfle on Y Axis.
-    buffer[3] = angle_roll_acc;
+    LMIC_setTxData2(1, buffer, buffer_size, 0);
 
-    LMIC_setTxData2(1, buffer, sizeof(buffer), 0);
+    delete[] buffer;
     Serial.println(F("Packet queued"));
     digitalWrite(BUILTIN_LED, HIGH);
 }
