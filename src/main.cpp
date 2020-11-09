@@ -4,12 +4,9 @@
 #include <WiFi.h>
 #include "esp_sleep.h"
 #include "IMUSensor/IMUSensor.h"
-#include "Message/Message.h"
-#include "Message/MessageBuilder.h"
-#include "Message/MessageBuilderManager.h"
+#include "VariableType/VariableType.h"
 #include "config.h"
 // For storing data on non-volatile memory
-#include <Preferences.h>
 
 struct Sensor
 {
@@ -27,9 +24,6 @@ int8_t angle_roll_acc;
 
 double acc_total_vector;
 
-MessageBuilderManager msg_manager;
-Preferences storage_manager;
-
 // These callbacks are only used in over - the - air activation, so they are
 // left empty here (we cannot leave them out completely unless
 // DISABLE_JOIN is set in config.h, otherwise the linker will complain).
@@ -42,17 +36,17 @@ void os_getDevKey(u1_t *buf) {}
 static osjob_t sendjob;
 void do_send(osjob_t *j);
 // Schedule TX every this many seconds (might become longer due to duty cycle limitations).
-const unsigned TX_INTERVAL = 1;
+unsigned TX_INTERVAL = 15;
 
-void print_acceleration(Axis<int8_t> acceleration)
-{
-    Serial.print(acceleration.x);
-    Serial.print("\t");
-    Serial.print(acceleration.y);
-    Serial.print("\t");
-    Serial.print(acceleration.z);
-    Serial.println();
-}
+// void print_acceleration(Axis<int8_t> acceleration)
+// {
+//     Serial.print(acceleration.x);
+//     Serial.print("\t");
+//     Serial.print(acceleration.y);
+//     Serial.print("\t");
+//     Serial.print(acceleration.z);
+//     Serial.println();
+// }
 
 // Pin mapping
 const lmic_pinmap lmic_pins = {
@@ -70,7 +64,11 @@ void onEvent(ev_t ev)
         Serial.println(F("EV_TXCOMPLETE (includes waiting for RX windows)"));
         digitalWrite(BUILTIN_LED, LOW);
         // Schedule next transmission
+        // imu_unit.wake_up();
+        // delay(1000);
+        //imu_unit.sleep();
         esp_sleep_enable_timer_wakeup(TX_INTERVAL * 1000000);
+
         esp_deep_sleep_start();
         //ESP.restart();
         //delay(TX_INTERVAL * 1000);
@@ -81,8 +79,8 @@ void onEvent(ev_t ev)
 
 void do_send(osjob_t *j)
 {
-    Serial.print("Variable type: ");
-    Serial.println(inclination_sensor.variableType);
+    // Serial.print("Variable type: ");
+    // Serial.println(inclination_sensor.variableType);
 
     Axis<double> acceleration;
     Axis<double> temp;
@@ -105,20 +103,24 @@ void do_send(osjob_t *j)
     angle_pitch_acc = asin(acceleration.y / acc_total_vector) * 57.296;
     angle_roll_acc = asin(acceleration.x / acc_total_vector) * -57.296;
 
-    Serial.print("pitch, x: ");
-    Serial.print(angle_pitch_acc);
-    Serial.print(" roll, y: ");
-    Serial.println(angle_roll_acc);
+    // Serial.print(F("pitch, x: "));
+    // Serial.print(angle_pitch_acc);
+    // Serial.print(F(" roll, y: "));
+    // Serial.println(angle_roll_acc);
 
     delay(4);
 
-    Message msg = msg_manager.createInclinationMessage(inclination_sensor.id_sensor, inclination_sensor.variableType, angle_pitch_acc, angle_roll_acc);
-    uint8_t *buffer = msg.getMessageArray();
-    int buffer_size = msg.getMessageArraySize();
+    uint8_t buffer[4];
 
-    LMIC_setTxData2(1, buffer, buffer_size, 0);
+    buffer[0] = inclination_sensor.id_sensor;
+    buffer[1] = inclination_sensor.variableType;
+    // Angle on X axis.
+    buffer[2] = angle_pitch_acc;
+    // Anfle on Y Axis.
+    buffer[3] = angle_roll_acc;
 
-    delete[] buffer;
+    LMIC_setTxData2(1, buffer, sizeof(buffer), 0);
+    
     Serial.println(F("Packet queued"));
     digitalWrite(BUILTIN_LED, HIGH);
 }
@@ -158,6 +160,7 @@ void setup()
     // Set data rate and transmit power for uplink (note: txpow seems to be ignored by the library)
     LMIC_setDrTxpow(DR_SF10, 14);
 
+    //imu_unit.wake_up();
     do_send(&sendjob);
     pinMode(BUILTIN_LED, OUTPUT);
     digitalWrite(BUILTIN_LED, LOW);

@@ -7,7 +7,7 @@ class SoilMoisture
 {
 public:
     SoilMoisture(uint8_t pin);
-    uint8_t get_soil_moisture_reading();
+    uint16_t get_soil_moisture_reading();
 
 private:
     uint8_t _pin;
